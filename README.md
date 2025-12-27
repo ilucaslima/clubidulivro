@@ -1,36 +1,49 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# ClubiDuLivro
 
-## Getting Started
+Clubi du Livro é um projeto criado pra quem gosta de ler, quer criar o hábito ou só quer conversar sobre livros sem pressão, sem pedantismo e sem correção de português. Aqui a regra é simples: ler, trocar ideia e se divertir.
 
-First, run the development server:
+---
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+## 🌟 Recursos
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Dashboard visual, visualização dos membros, cadastro/login, proteção de rotas, modal de progresso, cálculo automático de intensidade (leitura), validação, dados persistente (firebase), 
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+---
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## 🛠 Tecnologias
 
-## Learn More
+Next.js 16, React, TypeScript, Tailwind CSS, Firebase Auth, Firebase Firestore, React Hook Form, Yarn
 
-To learn more about Next.js, take a look at the following resources:
+---
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## 🚀 Primeiros Passos
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+### ✅ Pré-requisitos
 
-## Deploy on Vercel
+nodejs, yarn ou npm, git, firebase: authentication/database, 
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+### 📥 Instalação
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+yarn install ou npm install 
+
+### ▶️ Como Usar
+
+npm run dev ou yarn dev
+
+---
+
+## 🤝 Como Contribuir
+
+Abra uma issue ou envie um pull request
+
+---
+
+## 📄 Licença
+
+Este projeto está sob a **Licença MIT** – veja o arquivo LICENSE para detalhes.
+
+---
+
+## ✉️ Contato
+
+Lucas Lima → [Contato](https://github.com/ilucaslima)
