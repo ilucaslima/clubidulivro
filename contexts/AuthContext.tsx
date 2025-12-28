@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
 import { auth, db } from "@/lib/firebase";
@@ -8,16 +9,24 @@ import {
   onAuthStateChanged,
   signInWithEmailAndPassword,
 } from "firebase/auth";
-import { doc, getDoc, setDoc } from "firebase/firestore";
+import { Timestamp, doc, onSnapshot, setDoc } from "firebase/firestore";
 import React, { createContext, useContext, useEffect, useState } from "react";
+
+export interface CompletedBook {
+  title: string;
+  totalPages: number;
+  finishedAt: Date | Timestamp;
+}
 
 export interface UserProfile {
   id: string;
   name: string;
   book: string;
   totalPages: number;
+  currentBookPagesRead: number;
   dailyGoal: number;
   createdAt: Date;
+  completedBooks?: CompletedBook[];
 }
 
 interface AuthContextType {
@@ -59,46 +68,47 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setLoading(false);
     }, 8000);
 
-    let unsubscribe: (() => void) | null = null;
-
-    try {
-      unsubscribe = onAuthStateChanged(auth, async (user) => {
-        clearTimeout(fallbackTimeout);
-
-        setUser(user);
-
-        if (user) {
-          try {
-            const profileDoc = await getDoc(doc(db, "users", user.uid));
-            if (profileDoc.exists()) {
-              setProfile({
-                id: user.uid,
-                ...profileDoc.data(),
-                createdAt: profileDoc.data().createdAt.toDate(),
-              } as UserProfile);
-            }
-          } catch (error) {
-            console.error("Error fetching profile:", error);
-          }
-        } else {
-          setProfile(null);
-        }
-
-        setLoading(false);
-      });
-    } catch (error) {
-      console.error("Error setting up auth listener:", error);
+    const unsubscribeAuth = onAuthStateChanged(auth, (user) => {
       clearTimeout(fallbackTimeout);
+      setUser(user);
+      if (!user) {
+        setProfile(null);
+      }
       setLoading(false);
-    }
+    });
 
     return () => {
       clearTimeout(fallbackTimeout);
-      if (unsubscribe) {
-        unsubscribe();
-      }
+      unsubscribeAuth();
     };
   }, []);
+
+  useEffect(() => {
+    if (user) {
+      const unsubProfile = onSnapshot(
+        doc(db, "users", user.uid),
+        (profileDoc) => {
+          if (profileDoc.exists()) {
+            const data = profileDoc.data();
+            setProfile({
+              id: user.uid,
+              ...data,
+              createdAt: data.createdAt.toDate(),
+              completedBooks: (data.completedBooks || []).map((book: any) => ({
+                ...book,
+                finishedAt: book.finishedAt.toDate(),
+              })),
+            } as UserProfile);
+          }
+        },
+        (error) => {
+          console.error("Error listening to profile changes:", error);
+          setError("Erro ao carregar perfil em tempo real.");
+        }
+      );
+      return () => unsubProfile();
+    }
+  }, [user]);
 
   const signIn = async (email: string, password: string) => {
     setLoading(true);
@@ -107,7 +117,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       await signInWithEmailAndPassword(auth, email, password);
     } catch (error: any) {
       setLoading(false);
-      console.error("Sign in error:", error);
 
       let errorMessage = "Erro ao fazer login";
 
@@ -118,14 +127,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       ) {
         errorMessage = "Serviço não configurado. Verifique o Firebase.";
       } else if (error.code === "auth/user-not-found") {
-        errorMessage = "Usuário não encontrado";
+        errorMessage = "Usuário não encontrado. Verifique o e-mail ou crie uma conta.";
       } else if (error.code === "auth/wrong-password") {
         errorMessage = "Senha incorreta";
       } else if (error.code === "auth/invalid-email") {
         errorMessage = "Email inválido";
       } else if (error.code === "auth/invalid-credential") {
         errorMessage = "Email ou senha incorretos";
+      } else if (error.code === "auth/too-many-requests") {
+        errorMessage = "Muitas tentativas falhas. Tente novamente mais tarde.";
       }
+
+      console.error("Sign in error:", error.code || error.message);
 
       setError(errorMessage);
       throw new Error(errorMessage);
@@ -150,15 +163,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       const dailyGoal = Math.ceil(totalPages / 30); // Meta diária baseada em 30 dias
 
-      const userProfile = {
+      const userProfile: Omit<UserProfile, "id"> = {
         name,
         book,
         totalPages,
         dailyGoal,
+        currentBookPagesRead: 0,
+        completedBooks: [],
         createdAt: new Date(),
       };
 
-      const a = await setDoc(doc(db, "users", user.uid), userProfile);
+      await setDoc(doc(db, "users", user.uid), userProfile);
 
       setProfile({
         id: user.uid,
