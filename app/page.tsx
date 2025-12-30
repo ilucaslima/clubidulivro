@@ -1,8 +1,10 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
 import AuthScreen from "@/components/AuthScreen";
+import NewBookForm from "@/components/NewBookForm";
 import DailyProgressModal from "@/components/DailyProgressModal";
-import { useAuth, UserProfile } from "@/contexts/AuthContext";
+import { CompletedBook, useAuth, UserProfile } from "@/contexts/AuthContext";
 import {
   calculateDaysBetween,
   createDateFromDays,
@@ -22,7 +24,6 @@ export default function ReadingGroup() {
   }>({});
   const [showModal, setShowModal] = useState(false);
   const [loadingData, setLoadingData] = useState(false);
-  const [dataLoaded, setDataLoaded] = useState(false);
 
   const today = new Date();
   const startDate = new Date(today);
@@ -32,31 +33,14 @@ export default function ReadingGroup() {
   const weeksToShow = Math.ceil(totalDays / 7);
 
   useEffect(() => {
-    if (user && !loadingData) {
-      if (!dataLoaded) {
-        loadMembersAndProgress();
-      } else {
-        const userInList = allMembers.some((member) => member.id === user.uid);
-        if (!userInList && profile) {
-          setDataLoaded(false);
-          loadMembersAndProgress(true);
-        }
-      }
+    if (user) {
+      loadMembersAndProgress();
     }
-  }, [user, dataLoaded, loadingData, allMembers.length, profile]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user]);
 
-  useEffect(() => {
-    if (profile && user && dataLoaded) {
-      const userInList = allMembers.some((member) => member.id === user.uid);
-      if (!userInList) {
-        setDataLoaded(false);
-        loadMembersAndProgress(true);
-      }
-    }
-  }, [profile, user, allMembers, dataLoaded]);
-
-  const loadMembersAndProgress = async (forceReload = false) => {
-    if ((loadingData || dataLoaded) && !forceReload) return;
+  const loadMembersAndProgress = async () => {
+    if (loadingData) return;
 
     setLoadingData(true);
     try {
@@ -64,20 +48,23 @@ export default function ReadingGroup() {
       const members: UserProfile[] = [];
 
       usersSnapshot.forEach((doc) => {
+        const data = doc.data();
         members.push({
           id: doc.id,
-          ...doc.data(),
-          createdAt: doc.data().createdAt.toDate(),
+          ...data,
+          createdAt: data.createdAt.toDate(),
+          completedBooks: (data.completedBooks || []).map(
+            (book: CompletedBook) => ({
+              ...book,
+              finishedAt: (book.finishedAt as any).toDate(),
+            })
+          ),
         } as UserProfile);
       });
 
       setAllMembers(members);
 
-      if (members.length === 0) {
-        setDataLoaded(true);
-        return;
-      }
-
+      // Busca todo o histórico de progresso do último ano, independente do livro.
       const progressSnapshot = await getDocs(
         query(collection(db, "progress"), orderBy("timestamp", "desc"))
       );
@@ -118,9 +105,8 @@ export default function ReadingGroup() {
       });
 
       setContributions(progressData);
-      setDataLoaded(true);
     } catch (error: any) {
-      setDataLoaded(true);
+      console.log(error)
     } finally {
       setLoadingData(false);
     }
@@ -141,6 +127,31 @@ export default function ReadingGroup() {
           <div className="text-slate-400 text-sm">
             Carregando seu clube de leitura
           </div>
+        </div>
+      </div>
+    );
+  }
+
+  const handleDataUpdate = () => {
+    loadMembersAndProgress();
+  };
+
+  if (profile && !profile.book) {
+    return (
+      <div className="min-h-screen bg-slate-900 text-slate-200 p-4 sm:p-6 lg:p-8">
+        <div className="max-w-5xl mx-auto">
+          <div className="flex justify-between items-center mb-8">
+            <h1 className="text-2xl font-semibold">📚 Clubi du Livro</h1>
+            <div className="flex items-center gap-4">
+              <button
+                onClick={signOut}
+                className="bg-slate-600 hover:bg-slate-700 text-white px-4 py-2 rounded-md font-medium transition-colors"
+              >
+                Sair
+              </button>
+            </div>
+          </div>
+          <NewBookForm onBookAdded={handleDataUpdate} />
         </div>
       </div>
     );
@@ -178,9 +189,48 @@ export default function ReadingGroup() {
               </span>
               <span>📄 {profile.totalPages} páginas total</span>
               <span>🎯 Meta diária: {profile.dailyGoal} páginas</span>
+              {profile.totalPages > 0 && (
+                <span>
+                  🏁 Faltam{" "}
+                  {Math.max(
+                    0,
+                    profile.totalPages - profile.currentBookPagesRead
+                  )}{" "}
+                  páginas
+                </span>
+              )}
             </div>
           </div>
         )}
+
+        {profile &&
+          profile.completedBooks &&
+          profile.completedBooks.length > 0 && (
+            <div className="bg-slate-800 p-6 rounded-lg mb-8">
+              <h2 className="text-xl font-semibold text-white mb-4">
+                📚 Livros Concluídos
+              </h2>
+              <ul className="space-y-3">
+                {profile.completedBooks.map((book, index) => (
+                  <li
+                    key={index}
+                    className="bg-slate-700 p-3 rounded-md flex justify-between items-center"
+                  >
+                    <div>
+                      <p className="font-medium text-white">{book.title}</p>
+                      <p className="text-sm text-slate-400">
+                        Terminado em:{" "}
+                        {(book.finishedAt as Date).toLocaleDateString("pt-BR")}
+                      </p>
+                    </div>
+                    <p className="text-sm text-slate-300">
+                      {book.totalPages} páginas
+                    </p>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
 
         {loadingData ? (
           <div className="text-center py-16">
@@ -209,7 +259,7 @@ export default function ReadingGroup() {
               <ol className="text-sm text-slate-300 space-y-2 text-left">
                 <li>1. 📖 Escolha seu livro (já feito!)</li>
                 <li>2. 🎯 Defina sua meta diária (já calculada!)</li>
-                <li>3. 📊 Clique em "Marcar progresso" acima</li>
+                <li>3. 📊 Clique em &quot;Marcar progresso&quot; acima</li>
                 <li>4. 👥 Convide amigos para se juntarem</li>
               </ol>
             </div>
@@ -323,8 +373,7 @@ export default function ReadingGroup() {
         isOpen={showModal}
         onClose={() => setShowModal(false)}
         onSuccess={() => {
-          setDataLoaded(false);
-          loadMembersAndProgress(true); // Force reload
+          handleDataUpdate();
         }}
       />
     </div>

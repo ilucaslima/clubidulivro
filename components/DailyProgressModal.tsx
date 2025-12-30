@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
 import { useAuth } from "@/contexts/AuthContext";
@@ -5,7 +6,7 @@ import { createLocalDateString } from "@/lib/dateUtils";
 import { db } from "@/lib/firebase";
 import { calculateIntensity } from "@/lib/gridUtils";
 import { DailyProgressForm } from "@/lib/types";
-import { doc, serverTimestamp, setDoc } from "firebase/firestore";
+import { doc, runTransaction, serverTimestamp } from "firebase/firestore";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 
@@ -39,16 +40,59 @@ export default function DailyProgressModal({
     setError("");
 
     try {
+      const pagesReadToday = Number(data.pagesRead);
+      const userDocRef = doc(db, "users", profile.id);
       const today = new Date();
       const dateString = createLocalDateString(today);
-      const intensity = calculateIntensity(data.pagesRead, profile.dailyGoal);
+      const progressDocRef = doc(db, "progress", `${profile.id}_${dateString}`);
 
-      await setDoc(doc(db, "progress", `${profile.id}_${dateString}`), {
-        userId: profile.id,
-        date: dateString,
-        pagesRead: Number(data.pagesRead),
-        intensity,
-        timestamp: serverTimestamp(),
+      await runTransaction(db, async (transaction) => {
+        const userDoc = await transaction.get(userDocRef);
+        if (!userDoc.exists()) {
+          throw new Error("Documento do usuário não encontrado.");
+        }
+
+        const userData = userDoc.data();
+        const currentBookPagesRead = userData.currentBookPagesRead || 0;
+        const newCurrentBookPagesRead = currentBookPagesRead + pagesReadToday;
+
+        const intensity = calculateIntensity(pagesReadToday, profile.dailyGoal);
+
+        // Set daily progress
+        transaction.set(progressDocRef, {
+          userId: profile.id,
+          date: dateString,
+          pagesRead: pagesReadToday,
+          intensity,
+          timestamp: serverTimestamp(),
+        });
+
+         
+        const updateData: { [key: string]: any } = {
+          currentBookPagesRead: newCurrentBookPagesRead,
+        };
+
+        // Check if book is finished
+        if (profile.totalPages > 0 && newCurrentBookPagesRead >= profile.totalPages) {
+          const completedBook = {
+            title: profile.book,
+            totalPages: profile.totalPages,
+            finishedAt: new Date(),
+          };
+
+          const completedBooks = userData.completedBooks || [];
+
+          updateData.completedBooks = [...completedBooks, completedBook];
+          // Reseta os dados do livro atual no perfil do usuário.
+          // O histórico de progresso na coleção 'progress' não é afetado,
+          // garantindo que o heatmap continue exibindo a atividade de livros anteriores.
+          updateData.book = "";
+          updateData.totalPages = 0;
+          updateData.dailyGoal = 0;
+          updateData.currentBookPagesRead = 0;
+        }
+
+        transaction.update(userDocRef, updateData);
       });
 
       setSuccess(true);
@@ -66,6 +110,8 @@ export default function DailyProgressModal({
           "Sem permissão para salvar. Verifique as regras do Firestore.";
       } else if (error.message?.includes("offline")) {
         errorMessage = "Sem conexão. Verifique sua internet.";
+      } else {
+        errorMessage = error.message || errorMessage;
       }
 
       setError(errorMessage);
@@ -91,6 +137,16 @@ export default function DailyProgressModal({
             <p className="text-xs text-slate-400 mt-1">
               Meta diária: {profile.dailyGoal} páginas
             </p>
+            {profile.totalPages > 0 && (
+              <p className="text-xs text-slate-400 mt-1">
+                Faltam{" "}
+                {Math.max(
+                  0,
+                  profile.totalPages - (profile.currentBookPagesRead || 0)
+                )}{" "}
+                páginas para terminar.
+              </p>
+            )}
           </div>
         )}
 
@@ -119,16 +175,16 @@ export default function DailyProgressModal({
                       value: 0,
                       message: "Não pode ser negativo",
                     },
-                    max: {
-                      value: profile?.dailyGoal ? profile.dailyGoal * 3 : 100,
-                      message: `Máximo ${
-                        profile?.dailyGoal ? profile.dailyGoal * 3 : 100
-                      } páginas`,
-                    },
+                    // max: {
+                    //   value: profile?.dailyGoal ? profile.dailyGoal * 3 : 100,
+                    //   message: `Máximo ${
+                    //     profile?.dailyGoal ? profile.dailyGoal * 3 : 100
+                    //   } páginas`,
+                    // },
                   })}
                   type="number"
                   min="0"
-                  max={profile?.dailyGoal ? profile.dailyGoal * 3 : 100}
+                  // max={profile?.dailyGoal ? profile.dailyGoal * 3 : 100}
                   className="w-full p-3 bg-slate-700 border border-slate-600 rounded-md text-white placeholder-slate-400 focus:outline-none focus:border-green-500"
                   placeholder="0"
                 />
