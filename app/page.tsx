@@ -4,7 +4,7 @@
 import AuthScreen from "@/components/AuthScreen";
 import NewBookForm from "@/components/NewBookForm";
 import DailyProgressModal from "@/components/DailyProgressModal";
-import { CompletedBook, useAuth, UserProfile } from "@/contexts/AuthContext";
+import { useAuth, UserProfile } from "@/contexts/AuthContext";
 import {
   calculateDaysBetween,
   createDateFromDays,
@@ -13,8 +13,8 @@ import {
 import { db } from "@/lib/firebase";
 import { getLevelClass, getMonthPositions } from "@/lib/gridUtils";
 import { DayContribution } from "@/lib/types";
-import { collection, getDocs, orderBy, query } from "firebase/firestore";
-import { useEffect, useState } from "react";
+import { collection, getDocs, orderBy, query, Timestamp } from "firebase/firestore";
+import { useEffect, useState, useCallback, useMemo } from "react";
 
 export default function ReadingGroup() {
   const { user, profile, signOut, loading } = useAuth();
@@ -25,110 +25,99 @@ export default function ReadingGroup() {
   const [showModal, setShowModal] = useState(false);
   const [loadingData, setLoadingData] = useState(false);
 
-  const today = new Date();
-  const startDate = new Date(today);
-  startDate.setDate(today.getDate() - 364);
-  startDate.setDate(startDate.getDate() - startDate.getDay());
-  const totalDays = calculateDaysBetween(startDate, today);
+  const today = useMemo(() => new Date(), []);
+  const startDate = useMemo(() => {
+    const d = new Date(today);
+    d.setDate(today.getDate() - 364);
+    d.setDate(d.getDate() - d.getDay());
+    return d;
+  }, [today]);
+
+  const totalDays = useMemo(() => calculateDaysBetween(startDate, today), [startDate, today]);
   const weeksToShow = Math.ceil(totalDays / 7);
 
-  useEffect(() => {
-    if (user) {
-      loadMembersAndProgress();
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user]);
-
-  const loadMembersAndProgress = async () => {
+  const loadMembersAndProgress = useCallback(async () => {
     if (loadingData) return;
 
     setLoadingData(true);
     try {
+      // 1. Fetch Members
       const usersSnapshot = await getDocs(collection(db, "users"));
-      const members: UserProfile[] = [];
+      if (usersSnapshot.empty) {
+        setAllMembers([]);
+        setLoadingData(false);
+        return;
+      }
 
-      usersSnapshot.forEach((doc) => {
+      const members: UserProfile[] = usersSnapshot.docs.map((doc) => {
         const data = doc.data();
-        members.push({
+        return {
           id: doc.id,
           ...data,
-          createdAt: data.createdAt.toDate(),
+          createdAt: (data.createdAt as Timestamp).toDate(),
           completedBooks: (data.completedBooks || []).map(
-            (book: CompletedBook) => ({
+            (book: any) => ({
               ...book,
-              finishedAt: (book.finishedAt as any).toDate(),
+              finishedAt: (book.finishedAt as Timestamp).toDate(),
             })
           ),
-        } as UserProfile);
+        } as UserProfile;
       });
 
       setAllMembers(members);
 
-      // Busca todo o histórico de progresso do último ano, independente do livro.
+      // 2. Fetch Progress
       const progressSnapshot = await getDocs(
         query(collection(db, "progress"), orderBy("timestamp", "desc"))
       );
 
       const progressData: { [key: string]: DayContribution[] } = {};
 
+      // Initialize grid for each member
       members.forEach((member) => {
-        progressData[member.id] = [];
-
-        for (let i = 0; i < totalDays; i++) {
-          const currentDate = createDateFromDays(startDate, i);
-          progressData[member.id].push({
-            level: 0,
-            date: currentDate,
-          });
-        }
+        progressData[member.id] = Array.from({ length: totalDays }, (_, i) => ({
+          level: 0,
+          date: createDateFromDays(startDate, i),
+        }));
       });
 
+      // Fill grid with actual progress
       progressSnapshot.forEach((doc) => {
         const data = doc.data();
         const userId = data.userId;
+        if (!progressData[userId]) return;
+
         const progressDate = new Date(data.date + "T00:00:00");
+        const dayIndex = Math.floor(
+          (progressDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)
+        );
 
-        if (progressData[userId]) {
-          const dayIndex = Math.floor(
-            (progressDate.getTime() - startDate.getTime()) /
-              (1000 * 60 * 60 * 24)
-          );
-
-          if (dayIndex >= 0 && dayIndex < totalDays) {
-            progressData[userId][dayIndex] = {
-              level: data.intensity,
-              date: progressDate,
-              pagesRead: Number(data.pagesRead) || 0,
-            };
-          }
+        if (dayIndex >= 0 && dayIndex < totalDays) {
+          progressData[userId][dayIndex] = {
+            level: data.intensity,
+            date: progressDate,
+            pagesRead: Number(data.pagesRead) || 0,
+          };
         }
       });
 
       setContributions(progressData);
-    } catch (error: any) {
-      console.log(error)
+    } catch (error) {
+      console.error("Error loading group data:", error);
     } finally {
       setLoadingData(false);
     }
-  };
+  }, [loadingData, startDate, totalDays]);
 
-  const monthPositions = getMonthPositions(startDate, weeksToShow);
+  useEffect(() => {
+    if (user) {
+      loadMembersAndProgress();
+    }
+  }, [user, loadMembersAndProgress]);
 
-  const getRestPages = () => {
-    const total = Number(profile?.totalPages) || 0
-    const lidas = Number(profile?.currentBookPagesRead) || 0
-
-    if (!profile) return "--"
-    if (total <= 0) return "--"
-
-    const faltam = Math.max(0, total - lidas)
-    return faltam.toString().padStart(2, "0")
-  }
-
-
-  if (!user && !loading) {
-    return <AuthScreen />;
-  }
+  const monthPositions = useMemo(() => 
+    getMonthPositions(startDate, weeksToShow), 
+  [startDate, weeksToShow]);
 
   if (loading) {
     return (
@@ -136,17 +125,15 @@ export default function ReadingGroup() {
         <div className="text-center">
           <div className="w-12 h-12 border-4 border-green-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
           <div className="text-white text-lg mb-2">Conectando...</div>
-          <div className="text-slate-400 text-sm">
-            Carregando seu clube de leitura
-          </div>
+          <div className="text-slate-400 text-sm">Carregando seu clube de leitura</div>
         </div>
       </div>
     );
   }
 
-  const handleDataUpdate = () => {
-    loadMembersAndProgress();
-  };
+  if (!user) {
+    return <AuthScreen />;
+  }
 
   if (profile && !profile.book) {
     return (
@@ -154,16 +141,11 @@ export default function ReadingGroup() {
         <div className="max-w-5xl mx-auto">
           <div className="flex justify-between items-center mb-8">
             <h1 className="text-2xl font-semibold">📚 Clubi du Livro</h1>
-            <div className="flex items-center gap-4">
-              <button
-                onClick={signOut}
-                className="bg-slate-600 hover:bg-slate-700 text-white px-4 py-2 rounded-md font-medium transition-colors"
-              >
-                Sair
-              </button>
-            </div>
+            <button onClick={signOut} className="bg-slate-600 hover:bg-slate-700 text-white px-4 py-2 rounded-md font-medium transition-colors">
+              Sair
+            </button>
           </div>
-          <NewBookForm onBookAdded={handleDataUpdate} />
+          <NewBookForm onBookAdded={loadMembersAndProgress} />
         </div>
       </div>
     );
@@ -195,81 +177,48 @@ export default function ReadingGroup() {
         {profile && (
           <div className="bg-slate-800 p-4 rounded-lg mb-8">
             <h2 className="text-lg font-medium mb-2">Seu progresso</h2>
-            <div className="flex items-center gap-4 text-sm text-slate-300">
-              <span>
-                📖 <strong>{profile.book}</strong>
-              </span>
+            <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm text-slate-300">
+              <span>📖 <strong>{profile.book}</strong></span>
               <span>📄 {profile.totalPages} páginas total</span>
               <span>🎯 Meta diária: {profile.dailyGoal} páginas</span>
               {profile.totalPages > 0 && (
-                <span>
-                  {`🏁 Faltam ${getRestPages()} páginas`}
-                </span>
+                <span>🏁 Faltam {Math.max(0, profile.totalPages - (profile.currentBookPagesRead || 0))} páginas</span>
               )}
             </div>
           </div>
         )}
 
-        {profile &&
-          profile.completedBooks &&
-          profile.completedBooks.length > 0 && (
-            <div className="bg-slate-800 p-6 rounded-lg mb-8">
-              <h2 className="text-xl font-semibold text-white mb-4">
-                📚 Livros Concluídos
-              </h2>
-              <ul className="space-y-3">
-                {profile.completedBooks.map((book, index) => (
-                  <li
-                    key={index}
-                    className="bg-slate-700 p-3 rounded-md flex justify-between items-center"
-                  >
-                    <div>
-                      <p className="font-medium text-white">{book.title}</p>
-                      <p className="text-sm text-slate-400">
-                        Terminado em:{" "}
-                        {(book.finishedAt as Date).toLocaleDateString("pt-BR")}
-                      </p>
-                    </div>
-                    <p className="text-sm text-slate-300">
-                      {book.totalPages} páginas
+        {profile?.completedBooks && profile.completedBooks.length > 0 && (
+          <div className="bg-slate-800 p-6 rounded-lg mb-8">
+            <h2 className="text-xl font-semibold text-white mb-4">📚 Livros Concluídos</h2>
+            <ul className="space-y-3">
+              {profile.completedBooks.map((book, index) => (
+                <li key={index} className="bg-slate-700 p-3 rounded-md flex justify-between items-center">
+                  <div>
+                    <p className="font-medium text-white">{book.title}</p>
+                    <p className="text-sm text-slate-400">
+                      Terminado em: {new Date(book.finishedAt as any).toLocaleDateString("pt-BR")}
                     </p>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
+                  </div>
+                  <p className="text-sm text-slate-300">{book.totalPages} páginas</p>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
 
-        {loadingData ? (
+        {loadingData && allMembers.length === 0 ? (
           <div className="text-center py-16">
             <div className="w-8 h-8 border-4 border-green-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-            <div className="text-slate-300 text-lg mb-2">
-              Carregando membros...
-            </div>
-            <div className="text-slate-400 text-sm">
-              Buscando dados do grupo
-            </div>
+            <p className="text-slate-300">Buscando dados do grupo...</p>
           </div>
         ) : allMembers.length === 0 ? (
           <div className="text-center py-16">
             <div className="text-6xl mb-6">📚</div>
-            <h2 className="text-2xl font-semibold text-white mb-4">
-              Bem-vindo ao Clube!
-            </h2>
+            <h2 className="text-2xl font-semibold text-white mb-4">Bem-vindo ao Clube!</h2>
             <p className="text-slate-400 mb-6 max-w-md mx-auto">
-              Você é o primeiro membro! Convide seus amigos para começarem a ler
-              juntos. Marque seu primeiro progresso para aparecer no quadro.
+              Você é o primeiro membro! Convide seus amigos para começarem a ler juntos.
             </p>
-            <div className="bg-slate-800 p-6 rounded-lg max-w-sm mx-auto">
-              <h3 className="text-lg font-medium text-white mb-3">
-                Como começar:
-              </h3>
-              <ol className="text-sm text-slate-300 space-y-2 text-left">
-                <li>1. 📖 Escolha seu livro (já feito!)</li>
-                <li>2. 🎯 Defina sua meta diária (já calculada!)</li>
-                <li>3. 📊 Clique em &quot;Marcar progresso&quot; acima</li>
-                <li>4. 👥 Convide amigos para se juntarem</li>
-              </ol>
-            </div>
           </div>
         ) : (
           <div className="space-y-8">
@@ -279,9 +228,7 @@ export default function ReadingGroup() {
                   <div className="flex items-center gap-2">
                     <div className="text-sm font-medium">{member.name}</div>
                     {member.id === profile?.id && (
-                      <span className="text-xs bg-green-600 text-white px-2 py-1 rounded">
-                        Você
-                      </span>
+                      <span className="text-xs bg-green-600 text-white px-2 py-1 rounded">Você</span>
                     )}
                   </div>
                   <div className="text-xs text-slate-400">
@@ -289,7 +236,7 @@ export default function ReadingGroup() {
                   </div>
                 </div>
 
-                <div className="relative overflow-x-auto">
+                <div className="relative overflow-x-auto pb-2">
                   <div className="min-w-max">
                     <div className="relative mb-2 h-4">
                       {monthPositions.map(({ month, position }) => (
@@ -306,47 +253,29 @@ export default function ReadingGroup() {
                     <div className="flex">
                       <div className="flex flex-col text-xs text-slate-400 mr-2 shrink-0">
                         <div className="h-3 mb-0.5"></div>
-                        <div className="h-3 mb-0.5 leading-3 text-right pr-1">
-                          Seg
-                        </div>
+                        <div className="h-3 mb-0.5 leading-3 text-right pr-1">Seg</div>
                         <div className="h-3 mb-0.5"></div>
-                        <div className="h-3 mb-0.5 leading-3 text-right pr-1">
-                          Qua
-                        </div>
+                        <div className="h-3 mb-0.5 leading-3 text-right pr-1">Qua</div>
                         <div className="h-3 mb-0.5"></div>
-                        <div className="h-3 mb-0.5 leading-3 text-right pr-1">
-                          Sex
-                        </div>
-                        <div className="h-3 mb-0.5"></div>
+                        <div className="h-3 mb-0.5 leading-3 text-right pr-1">Sex</div>
                       </div>
 
                       <div className="inline-flex gap-0.5">
                         {Array.from({ length: weeksToShow }, (_, weekIndex) => (
-                          <div
-                            key={weekIndex}
-                            className="flex flex-col gap-0.5"
-                          >
+                          <div key={weekIndex} className="flex flex-col gap-0.5">
                             {Array.from({ length: 7 }, (_, dayIndex) => {
                               const dayNumber = weekIndex * 7 + dayIndex;
                               const day = contributions[member.id]?.[dayNumber];
-                              const currentDate = createDateFromDays(
-                                startDate,
-                                dayNumber
-                              );
-                              const tooltipText =
-                                day && day.pagesRead
-                                  ? `${formatTooltipDate(currentDate)} - ${
-                                      day.pagesRead
-                                    } páginas`
+                              const currentDate = createDateFromDays(startDate, dayNumber);
+                              const tooltipText = day?.pagesRead
+                                  ? `${formatTooltipDate(currentDate)} - ${day.pagesRead} páginas`
                                   : formatTooltipDate(currentDate);
 
                               return (
                                 <div
                                   key={dayNumber}
                                   className={`w-3 h-3 rounded-sm hover:ring-1 hover:ring-slate-400 transition-all ${
-                                    day
-                                      ? getLevelClass(day.level)
-                                      : "bg-gray-800"
+                                    day ? getLevelClass(day.level) : "bg-gray-800"
                                   }`}
                                   title={tooltipText}
                                 />
@@ -379,9 +308,7 @@ export default function ReadingGroup() {
       <DailyProgressModal
         isOpen={showModal}
         onClose={() => setShowModal(false)}
-        onSuccess={() => {
-          handleDataUpdate();
-        }}
+        onSuccess={loadMembersAndProgress}
       />
     </div>
   );

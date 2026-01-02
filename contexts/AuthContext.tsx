@@ -8,8 +8,9 @@ import {
   signOut as firebaseSignOut,
   onAuthStateChanged,
   signInWithEmailAndPassword,
+  AuthError,
 } from "firebase/auth";
-import { Timestamp, doc, onSnapshot, setDoc } from "firebase/firestore";
+import { Timestamp, doc, onSnapshot, setDoc, FirestoreError } from "firebase/firestore";
 import React, { createContext, useContext, useEffect, useState } from "react";
 
 export interface CompletedBook {
@@ -48,6 +49,45 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | null>(null);
 
+const getErrorMessage = (error: AuthError): string => {
+  const code = error.code;
+  const message = error.message || "";
+
+  if (code === "auth/configuration-not-found" || message.includes("CONFIGURATION_NOT_FOUND")) {
+    return "Serviço não configurado. Verifique o Firebase.";
+  }
+
+  if (code === "auth/user-not-found") {
+    return "Usuário não encontrado. Verifique o e-mail ou crie uma conta.";
+  }
+
+  if (code === "auth/wrong-password") {
+    return "Senha incorreta";
+  }
+
+  if (code === "auth/invalid-email") {
+    return "Email inválido";
+  }
+
+  if (code === "auth/invalid-credential") {
+    return "Email ou senha incorretos";
+  }
+
+  if (code === "auth/too-many-requests") {
+    return "Muitas tentativas falhas. Tente novamente mais tarde.";
+  }
+
+  if (code === "auth/email-already-in-use") {
+    return "Este email já está em uso";
+  }
+
+  if (code === "auth/weak-password") {
+    return "Senha muito fraca. Use pelo menos 6 caracteres";
+  }
+
+  return "Ocorreu um erro inesperado. Tente novamente.";
+};
+
 export function useAuth() {
   const context = useContext(AuthContext);
   if (!context) {
@@ -63,51 +103,53 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    // Timeout fallback in case Firebase doesn't respond
-    const fallbackTimeout = setTimeout(() => {
-      setLoading(false);
-    }, 8000);
+    const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
+      setUser(currentUser);
 
-    const unsubscribeAuth = onAuthStateChanged(auth, (user) => {
-      clearTimeout(fallbackTimeout);
-      setUser(user);
-      if (!user) {
+      if (!currentUser) {
         setProfile(null);
+        setLoading(false);
       }
-      setLoading(false);
     });
 
-    return () => {
-      clearTimeout(fallbackTimeout);
-      unsubscribeAuth();
-    };
+    return () => unsubscribeAuth();
   }, []);
 
   useEffect(() => {
-    if (user) {
-      const unsubProfile = onSnapshot(
-        doc(db, "users", user.uid),
-        (profileDoc) => {
-          if (profileDoc.exists()) {
-            const data = profileDoc.data();
-            setProfile({
-              id: user.uid,
-              ...data,
-              createdAt: data.createdAt.toDate(),
-              completedBooks: (data.completedBooks || []).map((book: any) => ({
-                ...book,
-                finishedAt: book.finishedAt.toDate(),
-              })),
-            } as UserProfile);
-          }
-        },
-        (error) => {
-          console.error("Error listening to profile changes:", error);
-          setError("Erro ao carregar perfil em tempo real.");
+    if (!user) return;
+
+    const unsubProfile = onSnapshot(
+      doc(db, "users", user.uid),
+      (profileDoc) => {
+        if (!profileDoc.exists()) {
+          setProfile(null);
+          setLoading(false);
+          return;
         }
-      );
-      return () => unsubProfile();
-    }
+
+        const data = profileDoc.data();
+        setProfile({
+          id: user.uid,
+          ...data,
+          createdAt: data.createdAt?.toDate?.() || new Date(),
+          completedBooks: (data.completedBooks || []).map((book: CompletedBook) => ({
+            ...book,
+            finishedAt: book.finishedAt instanceof Timestamp
+              ? book.finishedAt.toDate()
+              : new Date(book.finishedAt as unknown as string),
+          })),
+        } as UserProfile);
+
+        setLoading(false);
+      },
+      (err: FirestoreError) => {
+        console.error("Error listening to profile changes:", err);
+        setError("Erro ao carregar perfil em tempo real.");
+        setLoading(false);
+      }
+    );
+
+    return () => unsubProfile();
   }, [user]);
 
   const signIn = async (email: string, password: string) => {
@@ -115,31 +157,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setError(null);
     try {
       await signInWithEmailAndPassword(auth, email, password);
-    } catch (error: any) {
+    } catch (err: unknown) {
       setLoading(false);
-
-      let errorMessage = "Erro ao fazer login";
-
-      // Handle specific Firebase errors
-      if (
-        error.code === "auth/configuration-not-found" ||
-        error.message?.includes("CONFIGURATION_NOT_FOUND")
-      ) {
-        errorMessage = "Serviço não configurado. Verifique o Firebase.";
-      } else if (error.code === "auth/user-not-found") {
-        errorMessage = "Usuário não encontrado. Verifique o e-mail ou crie uma conta.";
-      } else if (error.code === "auth/wrong-password") {
-        errorMessage = "Senha incorreta";
-      } else if (error.code === "auth/invalid-email") {
-        errorMessage = "Email inválido";
-      } else if (error.code === "auth/invalid-credential") {
-        errorMessage = "Email ou senha incorretos";
-      } else if (error.code === "auth/too-many-requests") {
-        errorMessage = "Muitas tentativas falhas. Tente novamente mais tarde.";
-      }
-
-      console.error("Sign in error:", error.code || error.message);
-
+      const errorMessage = getErrorMessage(err as AuthError);
       setError(errorMessage);
       throw new Error(errorMessage);
     }
@@ -155,14 +175,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setLoading(true);
     setError(null);
     try {
-      const { user } = await createUserWithEmailAndPassword(
+      const { user: newUser } = await createUserWithEmailAndPassword(
         auth,
         email,
         password
       );
 
-      const dailyGoal = Math.ceil(totalPages / 30); // Meta diária baseada em 30 dias
-
+      const dailyGoal = Math.ceil(totalPages / 30);
       const userProfile: Omit<UserProfile, "id"> = {
         name,
         book,
@@ -173,32 +192,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         createdAt: new Date(),
       };
 
-      await setDoc(doc(db, "users", user.uid), userProfile);
-
-      setProfile({
-        id: user.uid,
-        ...userProfile,
-      });
-    } catch (error: any) {
+      await setDoc(doc(db, "users", newUser.uid), userProfile);
+      setProfile({ id: newUser.uid, ...userProfile });
+    } catch (err: unknown) {
       setLoading(false);
-      console.error("Sign up error:", error);
-
-      let errorMessage = "Erro ao criar conta";
-
-      // Handle specific Firebase errors
-      if (
-        error.code === "auth/configuration-not-found" ||
-        error.message?.includes("CONFIGURATION_NOT_FOUND")
-      ) {
-        errorMessage = "Serviço não configurado. Verifique o Firebase.";
-      } else if (error.code === "auth/email-already-in-use") {
-        errorMessage = "Este email já está em uso";
-      } else if (error.code === "auth/weak-password") {
-        errorMessage = "Senha muito fraca. Use pelo menos 6 caracteres";
-      } else if (error.code === "auth/invalid-email") {
-        errorMessage = "Email inválido";
-      }
-
+      const errorMessage = getErrorMessage(err as AuthError);
       setError(errorMessage);
       throw new Error(errorMessage);
     }
@@ -208,9 +206,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     await firebaseSignOut(auth);
   };
 
-  const clearError = () => {
-    setError(null);
-  };
+  const clearError = () => setError(null);
 
   const value = {
     user,

@@ -4,6 +4,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 import FirebaseConfigError from "./FirebaseConfigError";
+import BookSearch from "./BookSearch";
 
 interface SignInForm {
   email: string;
@@ -32,6 +33,7 @@ export default function AuthScreen() {
   const {
     register: registerSignUp,
     handleSubmit: handleSignUpSubmit,
+    setValue: setSignUpValue,
     formState: { errors: signUpErrors },
   } = useForm<SignUpForm>();
 
@@ -40,8 +42,8 @@ export default function AuthScreen() {
       clearError();
       setShowConfigError(false);
       await signIn(data.email, data.password);
-    } catch (error: any) {
-      if (error.message?.includes("configurado")) {
+    } catch (err: unknown) {
+      if (err instanceof Error && err.message?.includes("configurado")) {
         setShowConfigError(true);
       }
     }
@@ -58,10 +60,17 @@ export default function AuthScreen() {
         data.book,
         data.totalPages
       );
-    } catch (error: any) {
-      if (error.message?.includes("configurado")) {
+    } catch (err: unknown) {
+      if (err instanceof Error && err.message?.includes("configurado")) {
         setShowConfigError(true);
       }
+    }
+  };
+
+  const handleBookSelect = (book: { title: string; totalPages: number }) => {
+    setSignUpValue("book", book.title);
+    if (book.totalPages > 0) {
+      setSignUpValue("totalPages", book.totalPages);
     }
   };
 
@@ -72,7 +81,7 @@ export default function AuthScreen() {
 
   return (
     <div className="min-h-screen bg-slate-900 flex items-center justify-center p-8">
-      <div className="bg-slate-800 p-8 rounded-lg shadow-lg w-full max-w-md">
+      <div className="bg-slate-800 p-8 rounded-lg shadow-lg w-full max-w-md border border-slate-700">
         <div className="text-center mb-8">
           <h1 className="text-3xl font-bold text-white mb-2">
             📚 Clube do Livro
@@ -83,7 +92,7 @@ export default function AuthScreen() {
         </div>
 
         {error && (
-          <div className="bg-red-500/10 border border-red-500 text-red-500 p-3 rounded mb-4 text-sm">
+          <div className="bg-red-500/10 border border-red-500 text-red-500 p-3 rounded mb-4 text-sm text-center font-medium">
             {error}
           </div>
         )}
@@ -153,61 +162,65 @@ export default function AuthScreen() {
               )}
             </div>
 
-            <div>
-              <label className="block text-sm font-medium text-slate-300 mb-2">
-                Livro que está lendo
-              </label>
-              <input
-                {...registerSignUp("book", {
-                  required: "Nome do livro é obrigatório",
-                })}
-                type="text"
-                className="w-full p-3 bg-slate-700 border border-slate-600 rounded-md text-white placeholder-slate-400 focus:outline-none focus:border-green-500"
-                placeholder="Nome do livro"
-              />
-              {signUpErrors.book && (
-                <p className="text-red-400 text-sm mt-1">
-                  {signUpErrors.book.message}
-                </p>
-              )}
+            <div className="pt-4 border-t border-slate-700">
+              <BookSearch onSelect={handleBookSelect} label="Qual livro você está lendo?" />
             </div>
 
-            <div>
-              <label className="block text-sm font-medium text-slate-300 mb-2">
-                Total de páginas do livro
-              </label>
-              <input
-                {...registerSignUp("totalPages", {
-                  required: "Número de páginas é obrigatório",
-                  min: {
-                    value: 1,
-                    message: "Número de páginas deve ser maior que 0",
-                  },
-                })}
-                type="number"
-                min="1"
-                className="w-full p-3 bg-slate-700 border border-slate-600 rounded-md text-white placeholder-slate-400 focus:outline-none focus:border-green-500"
-                placeholder="300"
-              />
-              {signUpErrors.totalPages && (
-                <p className="text-red-400 text-sm mt-1">
-                  {signUpErrors.totalPages.message}
-                </p>
-              )}
-              <p className="text-xs text-slate-400 mt-1">
-                Sua meta diária será calculada dividindo por 30 dias
-              </p>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-300 mb-2">
+                  Livro (Confirmar)
+                </label>
+                <input
+                  {...registerSignUp("book", {
+                    required: "Obrigatório",
+                  })}
+                  type="text"
+                  className="w-full p-3 bg-slate-700 border border-slate-600 rounded-md text-white text-sm focus:outline-none focus:border-green-500"
+                  placeholder="Nome do livro"
+                />
+                {signUpErrors.book && (
+                  <p className="text-red-400 text-xs mt-1">
+                    {signUpErrors.book.message}
+                  </p>
+                )}
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-300 mb-2">
+                  Total de páginas
+                </label>
+                <input
+                  {...registerSignUp("totalPages", {
+                    required: "Obrigatório",
+                    min: {
+                      value: 1,
+                      message: "Min 1",
+                    },
+                    valueAsNumber: true
+                  })}
+                  type="number"
+                  min="1"
+                  className="w-full p-3 bg-slate-700 border border-slate-600 rounded-md text-white text-sm focus:outline-none focus:border-green-500"
+                  placeholder="300"
+                />
+                {signUpErrors.totalPages && (
+                  <p className="text-red-400 text-xs mt-1">
+                    {signUpErrors.totalPages.message}
+                  </p>
+                )}
+              </div>
             </div>
 
             <button
               type="submit"
               disabled={loading}
-              className="w-full bg-green-600 hover:bg-green-700 disabled:bg-green-800 disabled:cursor-not-allowed text-white font-medium py-3 px-4 rounded-md transition-colors flex items-center justify-center gap-2"
+              className="w-full bg-green-600 hover:bg-green-700 disabled:bg-green-800 disabled:cursor-not-allowed text-white font-bold py-4 px-4 rounded-md transition-all flex items-center justify-center gap-2"
             >
               {loading ? (
                 <>
                   <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                  Criando conta...
+                  Criando sua conta...
                 </>
               ) : (
                 "Entrar para o clube"
@@ -257,7 +270,7 @@ export default function AuthScreen() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full bg-green-600 hover:bg-green-700 disabled:bg-green-800 disabled:cursor-not-allowed text-white font-medium py-3 px-4 rounded-md transition-colors flex items-center justify-center gap-2"
+              className="w-full bg-green-600 hover:bg-green-700 disabled:bg-green-800 disabled:cursor-not-allowed text-white font-bold py-4 px-4 rounded-md transition-all flex items-center justify-center gap-2"
             >
               {loading ? (
                 <>
@@ -271,10 +284,10 @@ export default function AuthScreen() {
           </form>
         )}
 
-        <div className="mt-6 text-center">
+        <div className="mt-6 text-center border-t border-slate-700 pt-6">
           <button
             onClick={() => setIsSignUp(!isSignUp)}
-            className="text-green-400 hover:text-green-300 text-sm"
+            className="text-green-400 hover:text-green-300 text-sm font-medium transition-colors"
           >
             {isSignUp
               ? "Já tem uma conta? Faça login"

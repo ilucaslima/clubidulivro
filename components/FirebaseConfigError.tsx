@@ -29,15 +29,15 @@ export default function FirebaseConfigError() {
                   Console Firebase
                 </a>
               </li>
-              <li>Selecione o projeto "clubidulivro"</li>
+              <li>Selecione o projeto &quot;clubidulivro&quot;</li>
               <li>
-                No menu lateral, clique em <strong>"Authentication"</strong>
+                No menu lateral, clique em <strong>&quot;Authentication&quot;</strong>
               </li>
               <li>
-                Clique em <strong>"Get Started"</strong> para inicializar
+                Clique em <strong>&quot;Get Started&quot;</strong> para inicializar
               </li>
               <li>
-                Na aba <strong>"Sign-in method"</strong>, habilite:
+                Na aba <strong>&quot;Sign-in method&quot;</strong>, habilite:
               </li>
               <ul className="list-disc list-inside ml-4 mt-2">
                 <li>
@@ -45,13 +45,13 @@ export default function FirebaseConfigError() {
                 </li>
               </ul>
               <li>
-                No menu lateral, clique em <strong>"Firestore Database"</strong>
+                No menu lateral, clique em <strong>&quot;Firestore Database&quot;</strong>
               </li>
               <li>
-                Clique em <strong>"Create database"</strong>
+                Clique em <strong>&quot;Create database&quot;</strong>
               </li>
               <li>
-                Escolha <strong>"Start in test mode"</strong> (por enquanto)
+                Escolha <strong>&quot;Start in test mode&quot;</strong> (por enquanto)
               </li>
               <li>Selecione uma localização (ex: us-central1)</li>
             </ol>

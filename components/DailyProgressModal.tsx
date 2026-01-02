@@ -13,7 +13,7 @@ import { useForm } from "react-hook-form";
 interface DailyProgressModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSuccess?: () => void; // Callback para recarregar dados
+  onSuccess?: () => void;
 }
 
 export default function DailyProgressModal({
@@ -51,25 +51,14 @@ export default function DailyProgressModal({
         const progressDoc = await transaction.get(progressDocRef);
 
         if (!userDoc.exists()) {
-          throw new Error("Documento do usuário não encontrado.");
+          throw new Error("Usuário não encontrado.");
         }
 
         const userData = userDoc.data();
         const currentBookPagesRead = userData.currentBookPagesRead || 0;
-        const pagesAlreadyReadToday = progressDoc.exists()
-          ? Number(progressDoc.data().pagesRead) || 0
-          : 0;
+        const newTotalRead = currentBookPagesRead + pagesReadToday;
+        const intensity = calculateIntensity(pagesReadToday, profile.dailyGoal);
 
-        const totalPagesForToday = pagesAlreadyReadToday + pagesReadFromInput;
-        const newCurrentBookPagesRead =
-          currentBookPagesRead + pagesReadFromInput;
-
-        const intensity = calculateIntensity(
-          totalPagesForToday,
-          profile.dailyGoal
-        );
-
-        // Set daily progress
         transaction.set(progressDocRef, {
           userId: profile.id,
           date: dateString,
@@ -78,27 +67,19 @@ export default function DailyProgressModal({
           timestamp: serverTimestamp(),
         });
 
-        const updateData: { [key: string]: any } = {
-          currentBookPagesRead: newCurrentBookPagesRead,
+        const updateData: Record<string, any> = {
+          currentBookPagesRead: newTotalRead,
         };
 
         // Check if book is finished
-        if (
-          profile.totalPages > 0 &&
-          newCurrentBookPagesRead >= profile.totalPages
-        ) {
+        if (profile.totalPages > 0 && newTotalRead >= profile.totalPages) {
           const completedBook = {
             title: profile.book,
             totalPages: profile.totalPages,
             finishedAt: new Date(),
           };
 
-          const completedBooks = userData.completedBooks || [];
-
-          updateData.completedBooks = [...completedBooks, completedBook];
-          // Reseta os dados do livro atual no perfil do usuário.
-          // O histórico de progresso na coleção 'progress' não é afetado,
-          // garantindo que o heatmap continue exibindo a atividade de livros anteriores.
+          updateData.completedBooks = [...(userData.completedBooks || []), completedBook];
           updateData.book = "";
           updateData.totalPages = 0;
           updateData.dailyGoal = 0;
@@ -116,18 +97,13 @@ export default function DailyProgressModal({
         onClose();
         onSuccess?.();
       }, 1500);
-    } catch (error: any) {
-      let errorMessage = "Erro ao salvar progresso";
-      if (error.code === "permission-denied") {
-        errorMessage =
-          "Sem permissão para salvar. Verifique as regras do Firestore.";
-      } else if (error.message?.includes("offline")) {
-        errorMessage = "Sem conexão. Verifique sua internet.";
-      } else {
-        errorMessage = error.message || errorMessage;
+    } catch (err: any) {
+      console.error("Error saving progress:", err);
+      if (err.code === "permission-denied") {
+        setError("Sem permissão para salvar. Verifique o Firebase.");
+        return;
       }
-
-      setError(errorMessage);
+      setError(err.message || "Erro ao salvar progresso");
     } finally {
       setLoading(false);
     }
@@ -136,108 +112,78 @@ export default function DailyProgressModal({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-      <div className="bg-slate-800 rounded-lg p-6 w-full max-w-md">
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+      <div className="bg-slate-800 rounded-lg p-6 w-full max-w-md border border-slate-700 shadow-2xl">
         <h2 className="text-xl font-bold text-white mb-4">
-          Marcar progresso de hoje
+          Progresso de hoje 📖
         </h2>
 
         {profile && (
-          <div className="bg-slate-700 p-3 rounded mb-4">
-            <p className="text-sm text-slate-300">
-              📖 <strong>{profile.book}</strong>
+          <div className="bg-slate-700/50 p-4 rounded-lg mb-6 border border-slate-600">
+            <p className="text-sm text-slate-200 font-medium">
+              {profile.book || "Nenhum livro selecionado"}
             </p>
-            <p className="text-xs text-slate-400 mt-1">
-              Meta diária: {profile.dailyGoal} páginas
-            </p>
-            {profile.totalPages > 0 && (
-              <p className="text-xs text-slate-400 mt-1">
-                Faltam{" "}
-                {Math.max(
-                  0,
-                  profile.totalPages - (profile.currentBookPagesRead || 0)
-                )}{" "}
-                páginas para terminar.
-              </p>
-            )}
+            <div className="flex justify-between mt-2">
+              <span className="text-xs text-slate-400">Meta: {profile.dailyGoal} páginas</span>
+              {profile.totalPages > 0 && (
+                <span className="text-xs text-green-400">
+                  Restam {Math.max(0, profile.totalPages - (profile.currentBookPagesRead || 0))} pgs
+                </span>
+              )}
+            </div>
           </div>
         )}
 
         {success ? (
-          <div className="text-center py-8">
-            <div className="text-4xl mb-2">✅</div>
-            <p className="text-green-400 font-medium">Progresso salvo!</p>
+          <div className="text-center py-8 animate-in fade-in zoom-in duration-300">
+            <div className="text-5xl mb-4">🎉</div>
+            <p className="text-green-400 font-bold text-lg">Progresso registrado!</p>
+            <p className="text-slate-400 text-sm mt-1">Sua contribuição foi adicionada ao quadro.</p>
           </div>
         ) : (
           <>
             {error && (
-              <div className="bg-red-500/10 border border-red-500 text-red-500 p-3 rounded mb-4 text-sm">
+              <div className="bg-red-500/10 border border-red-500 text-red-500 p-3 rounded mb-4 text-sm font-medium">
                 {error}
               </div>
             )}
 
-            <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+            <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
               <div>
                 <label className="block text-sm font-medium text-slate-300 mb-2">
-                  Quantas páginas você leu hoje?
+                  Quantas páginas você leu?
                 </label>
                 <input
                   {...register("pagesRead", {
-                    required: "Número de páginas é obrigatório",
-                    min: {
-                      value: 0,
-                      message: "Não pode ser negativo",
-                    },
-                    // max: {
-                    //   value: profile?.dailyGoal ? profile.dailyGoal * 3 : 100,
-                    //   message: `Máximo ${
-                    //     profile?.dailyGoal ? profile.dailyGoal * 3 : 100
-                    //   } páginas`,
-                    // },
+                    required: "Informe a quantidade de páginas",
+                    min: { value: 0, message: "Não pode ser negativo" },
                   })}
                   type="number"
-                  min="0"
-                  // max={profile?.dailyGoal ? profile.dailyGoal * 3 : 100}
-                  className="w-full p-3 bg-slate-700 border border-slate-600 rounded-md text-white placeholder-slate-400 focus:outline-none focus:border-green-500"
+                  autoFocus
+                  className="w-full p-4 bg-slate-900 border border-slate-600 rounded-lg text-white text-2xl font-bold text-center focus:outline-none focus:border-green-500 focus:ring-1 focus:ring-green-500 transition-all"
                   placeholder="0"
                 />
                 {errors.pagesRead && (
-                  <p className="text-red-400 text-sm mt-1">
+                  <p className="text-red-400 text-sm mt-2 font-medium">
                     {errors.pagesRead.message}
                   </p>
                 )}
-
-                {profile && (
-                  <div className="mt-2 text-xs text-slate-400">
-                    <p>0 = Não leu</p>
-                    <p>1-{Math.floor(profile.dailyGoal * 0.5)} = Pouco</p>
-                    <p>
-                      {Math.floor(profile.dailyGoal * 0.5) + 1}-
-                      {profile.dailyGoal - 1} = Médio
-                    </p>
-                    <p>
-                      {profile.dailyGoal}-{Math.floor(profile.dailyGoal * 1.5)}{" "}
-                      = Muito
-                    </p>
-                    <p>{Math.floor(profile.dailyGoal * 1.5) + 1}+ = Intenso</p>
-                  </div>
-                )}
               </div>
 
-              <div className="flex gap-3">
+              <div className="grid grid-cols-2 gap-3">
                 <button
                   type="button"
                   onClick={onClose}
-                  className="flex-1 bg-slate-600 hover:bg-slate-700 text-white font-medium py-2 px-4 rounded-md transition-colors"
+                  className="bg-slate-700 hover:bg-slate-600 text-white font-medium py-3 px-4 rounded-md transition-colors"
                 >
                   Cancelar
                 </button>
                 <button
                   type="submit"
                   disabled={loading}
-                  className="flex-1 bg-green-600 hover:bg-green-700 disabled:bg-green-800 text-white font-medium py-2 px-4 rounded-md transition-colors"
+                  className="bg-green-600 hover:bg-green-700 disabled:bg-green-800 text-white font-bold py-3 px-4 rounded-md transition-all shadow-lg shadow-green-900/20"
                 >
-                  {loading ? "Salvando..." : "Salvar"}
+                  {loading ? "Salvando..." : "Registrar"}
                 </button>
               </div>
             </form>
