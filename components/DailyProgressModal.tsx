@@ -40,7 +40,7 @@ export default function DailyProgressModal({
     setError("");
 
     try {
-      const pagesReadToday = Number(data.pagesRead);
+      const pagesReadFromInput = Number(data.pagesRead);
       const userDocRef = doc(db, "users", profile.id);
       const today = new Date();
       const dateString = createLocalDateString(today);
@@ -48,6 +48,8 @@ export default function DailyProgressModal({
 
       await runTransaction(db, async (transaction) => {
         const userDoc = await transaction.get(userDocRef);
+        const progressDoc = await transaction.get(progressDocRef);
+
         if (!userDoc.exists()) {
           throw new Error("Usuário não encontrado.");
         }
@@ -57,11 +59,10 @@ export default function DailyProgressModal({
         const newTotalRead = currentBookPagesRead + pagesReadToday;
         const intensity = calculateIntensity(pagesReadToday, profile.dailyGoal);
 
-        // Save daily activity
         transaction.set(progressDocRef, {
           userId: profile.id,
           date: dateString,
-          pagesRead: pagesReadToday,
+          pagesRead: totalPagesForToday,
           intensity,
           timestamp: serverTimestamp(),
         });
