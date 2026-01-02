@@ -40,7 +40,7 @@ export default function DailyProgressModal({
     setError("");
 
     try {
-      const pagesReadToday = Number(data.pagesRead);
+      const pagesReadFromInput = Number(data.pagesRead);
       const userDocRef = doc(db, "users", profile.id);
       const today = new Date();
       const dateString = createLocalDateString(today);
@@ -48,32 +48,45 @@ export default function DailyProgressModal({
 
       await runTransaction(db, async (transaction) => {
         const userDoc = await transaction.get(userDocRef);
+        const progressDoc = await transaction.get(progressDocRef);
+
         if (!userDoc.exists()) {
           throw new Error("Documento do usuário não encontrado.");
         }
 
         const userData = userDoc.data();
         const currentBookPagesRead = userData.currentBookPagesRead || 0;
-        const newCurrentBookPagesRead = currentBookPagesRead + pagesReadToday;
+        const pagesAlreadyReadToday = progressDoc.exists()
+          ? Number(progressDoc.data().pagesRead) || 0
+          : 0;
 
-        const intensity = calculateIntensity(pagesReadToday, profile.dailyGoal);
+        const totalPagesForToday = pagesAlreadyReadToday + pagesReadFromInput;
+        const newCurrentBookPagesRead =
+          currentBookPagesRead + pagesReadFromInput;
+
+        const intensity = calculateIntensity(
+          totalPagesForToday,
+          profile.dailyGoal
+        );
 
         // Set daily progress
         transaction.set(progressDocRef, {
           userId: profile.id,
           date: dateString,
-          pagesRead: pagesReadToday,
+          pagesRead: totalPagesForToday,
           intensity,
           timestamp: serverTimestamp(),
         });
 
-         
         const updateData: { [key: string]: any } = {
           currentBookPagesRead: newCurrentBookPagesRead,
         };
 
         // Check if book is finished
-        if (profile.totalPages > 0 && newCurrentBookPagesRead >= profile.totalPages) {
+        if (
+          profile.totalPages > 0 &&
+          newCurrentBookPagesRead >= profile.totalPages
+        ) {
           const completedBook = {
             title: profile.book,
             totalPages: profile.totalPages,

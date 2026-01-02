@@ -114,6 +114,18 @@ export default function ReadingGroup() {
 
   const monthPositions = getMonthPositions(startDate, weeksToShow);
 
+  const getRestPages = () => {
+    const total = Number(profile?.totalPages) || 0
+    const lidas = Number(profile?.currentBookPagesRead) || 0
+
+    if (!profile) return "--"
+    if (total <= 0) return "--"
+
+    const faltam = Math.max(0, total - lidas)
+    return faltam.toString().padStart(2, "0")
+  }
+
+
   if (!user && !loading) {
     return <AuthScreen />;
   }
@@ -191,12 +203,7 @@ export default function ReadingGroup() {
               <span>🎯 Meta diária: {profile.dailyGoal} páginas</span>
               {profile.totalPages > 0 && (
                 <span>
-                  🏁 Faltam{" "}
-                  {Math.max(
-                    0,
-                    profile.totalPages - profile.currentBookPagesRead
-                  )}{" "}
-                  páginas
+                  {`🏁 Faltam ${getRestPages()} páginas`}
                 </span>
               )}
             </div>
