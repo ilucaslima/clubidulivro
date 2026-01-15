@@ -4,6 +4,7 @@
 import AuthScreen from "@/components/AuthScreen";
 import DailyProgressModal from "@/components/DailyProgressModal";
 import NewBookForm from "@/components/NewBookForm";
+import RankingScreen from "@/components/RankingScreen";
 import { useAuth, UserProfile } from "@/contexts/AuthContext";
 import {
   calculateDaysBetween,
@@ -29,6 +30,7 @@ export default function ReadingGroup() {
     [key: string]: DayContribution[];
   }>({});
   const [showModal, setShowModal] = useState(false);
+  const [showRankingScreen, setShowRankingScreen] = useState(false);
   const [loadingData, setLoadingData] = useState(false);
 
   const today = useMemo(() => new Date(), []);
@@ -156,6 +158,18 @@ export default function ReadingGroup() {
     return <AuthScreen />;
   }
 
+  // Se estiver mostrando a tela de ranking
+  if (showRankingScreen) {
+    return (
+      <RankingScreen
+        members={allMembers}
+        contributions={contributions}
+        currentUserId={profile?.id}
+        onBack={() => setShowRankingScreen(false)}
+      />
+    );
+  }
+
   if (profile && !profile.book) {
     return (
       <div className="min-h-screen bg-slate-900 text-slate-200 p-4 sm:p-6 lg:p-8">
@@ -182,12 +196,20 @@ export default function ReadingGroup() {
           <h1 className="text-2xl font-semibold">📚 Clubi du Livro</h1>
           <div className="flex items-center gap-4">
             {profile && (
-              <button
-                onClick={() => setShowModal(true)}
-                className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-md font-medium transition-colors"
-              >
-                Marcar progresso
-              </button>
+              <>
+                <button
+                  onClick={() => setShowModal(true)}
+                  className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-md font-medium transition-colors"
+                >
+                  Marcar progresso
+                </button>
+                <button
+                  onClick={() => setShowRankingScreen(true)}
+                  className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md font-medium transition-colors"
+                >
+                  Ranking
+                </button>
+              </>
             )}
             <button
               onClick={signOut}
