@@ -2,8 +2,8 @@
 "use client";
 
 import AuthScreen from "@/components/AuthScreen";
-import NewBookForm from "@/components/NewBookForm";
 import DailyProgressModal from "@/components/DailyProgressModal";
+import NewBookForm from "@/components/NewBookForm";
 import { useAuth, UserProfile } from "@/contexts/AuthContext";
 import {
   calculateDaysBetween,
@@ -13,8 +13,14 @@ import {
 import { db } from "@/lib/firebase";
 import { getLevelClass, getMonthPositions } from "@/lib/gridUtils";
 import { DayContribution } from "@/lib/types";
-import { collection, getDocs, orderBy, query, Timestamp } from "firebase/firestore";
-import { useEffect, useState, useCallback, useMemo } from "react";
+import {
+  collection,
+  getDocs,
+  orderBy,
+  query,
+  Timestamp,
+} from "firebase/firestore";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 export default function ReadingGroup() {
   const { user, profile, signOut, loading } = useAuth();
@@ -33,7 +39,10 @@ export default function ReadingGroup() {
     return d;
   }, [today]);
 
-  const totalDays = useMemo(() => calculateDaysBetween(startDate, today), [startDate, today]);
+  const totalDays = useMemo(
+    () => calculateDaysBetween(startDate, today),
+    [startDate, today]
+  );
   const weeksToShow = Math.ceil(totalDays / 7);
 
   const loadMembersAndProgress = useCallback(async () => {
@@ -55,12 +64,10 @@ export default function ReadingGroup() {
           id: doc.id,
           ...data,
           createdAt: (data.createdAt as Timestamp).toDate(),
-          completedBooks: (data.completedBooks || []).map(
-            (book: any) => ({
-              ...book,
-              finishedAt: (book.finishedAt as Timestamp).toDate(),
-            })
-          ),
+          completedBooks: (data.completedBooks || []).map((book: any) => ({
+            ...book,
+            finishedAt: (book.finishedAt as Timestamp).toDate(),
+          })),
         } as UserProfile;
       });
 
@@ -115,9 +122,21 @@ export default function ReadingGroup() {
     }
   }, [user, loadMembersAndProgress]);
 
-  const monthPositions = useMemo(() => 
-    getMonthPositions(startDate, weeksToShow), 
-  [startDate, weeksToShow]);
+  const monthPositions = useMemo(
+    () => getMonthPositions(startDate, weeksToShow),
+    [startDate, weeksToShow]
+  );
+
+  // Ordenar membros por número de marcações (contribuições)
+  const sortedMembers = useMemo(() => {
+    return [...allMembers].sort((a, b) => {
+      const aContributions =
+        contributions[a.id]?.filter((day) => day.level > 0).length || 0;
+      const bContributions =
+        contributions[b.id]?.filter((day) => day.level > 0).length || 0;
+      return bContributions - aContributions; // Ordem decrescente
+    });
+  }, [allMembers, contributions]);
 
   if (loading) {
     return (
@@ -125,7 +144,9 @@ export default function ReadingGroup() {
         <div className="text-center">
           <div className="w-12 h-12 border-4 border-green-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
           <div className="text-white text-lg mb-2">Conectando...</div>
-          <div className="text-slate-400 text-sm">Carregando seu clube de leitura</div>
+          <div className="text-slate-400 text-sm">
+            Carregando seu clube de leitura
+          </div>
         </div>
       </div>
     );
@@ -141,7 +162,10 @@ export default function ReadingGroup() {
         <div className="max-w-5xl mx-auto">
           <div className="flex justify-between items-center mb-8">
             <h1 className="text-2xl font-semibold">📚 Clubi du Livro</h1>
-            <button onClick={signOut} className="bg-slate-600 hover:bg-slate-700 text-white px-4 py-2 rounded-md font-medium transition-colors">
+            <button
+              onClick={signOut}
+              className="bg-slate-600 hover:bg-slate-700 text-white px-4 py-2 rounded-md font-medium transition-colors"
+            >
               Sair
             </button>
           </div>
@@ -178,11 +202,20 @@ export default function ReadingGroup() {
           <div className="bg-slate-800 p-4 rounded-lg mb-8">
             <h2 className="text-lg font-medium mb-2">Seu progresso</h2>
             <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm text-slate-300">
-              <span>📖 <strong>{profile.book}</strong></span>
+              <span>
+                📖 <strong>{profile.book}</strong>
+              </span>
               <span>📄 {profile.totalPages} páginas total</span>
               <span>🎯 Meta diária: {profile.dailyGoal} páginas</span>
               {profile.totalPages > 0 && (
-                <span>🏁 Faltam {Math.max(0, profile.totalPages - (profile.currentBookPagesRead || 0))} páginas</span>
+                <span>
+                  🏁 Faltam{" "}
+                  {Math.max(
+                    0,
+                    profile.totalPages - (profile.currentBookPagesRead || 0)
+                  )}{" "}
+                  páginas
+                </span>
               )}
             </div>
           </div>
@@ -190,17 +223,27 @@ export default function ReadingGroup() {
 
         {profile?.completedBooks && profile.completedBooks.length > 0 && (
           <div className="bg-slate-800 p-6 rounded-lg mb-8">
-            <h2 className="text-xl font-semibold text-white mb-4">📚 Livros Concluídos</h2>
+            <h2 className="text-xl font-semibold text-white mb-4">
+              📚 Livros Concluídos
+            </h2>
             <ul className="space-y-3">
               {profile.completedBooks.map((book, index) => (
-                <li key={index} className="bg-slate-700 p-3 rounded-md flex justify-between items-center">
+                <li
+                  key={index}
+                  className="bg-slate-700 p-3 rounded-md flex justify-between items-center"
+                >
                   <div>
                     <p className="font-medium text-white">{book.title}</p>
                     <p className="text-sm text-slate-400">
-                      Terminado em: {new Date(book.finishedAt as any).toLocaleDateString("pt-BR")}
+                      Terminado em:{" "}
+                      {new Date(book.finishedAt as any).toLocaleDateString(
+                        "pt-BR"
+                      )}
                     </p>
                   </div>
-                  <p className="text-sm text-slate-300">{book.totalPages} páginas</p>
+                  <p className="text-sm text-slate-300">
+                    {book.totalPages} páginas
+                  </p>
                 </li>
               ))}
             </ul>
@@ -215,80 +258,107 @@ export default function ReadingGroup() {
         ) : allMembers.length === 0 ? (
           <div className="text-center py-16">
             <div className="text-6xl mb-6">📚</div>
-            <h2 className="text-2xl font-semibold text-white mb-4">Bem-vindo ao Clube!</h2>
+            <h2 className="text-2xl font-semibold text-white mb-4">
+              Bem-vindo ao Clube!
+            </h2>
             <p className="text-slate-400 mb-6 max-w-md mx-auto">
-              Você é o primeiro membro! Convide seus amigos para começarem a ler juntos.
+              Você é o primeiro membro! Convide seus amigos para começarem a ler
+              juntos.
             </p>
           </div>
         ) : (
           <div className="space-y-8">
-            {allMembers.map((member) => (
-              <div key={member.id}>
-                <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 mb-3">
-                  <div className="flex items-center gap-2">
-                    <div className="text-sm font-medium">{member.name}</div>
-                    {member.id === profile?.id && (
-                      <span className="text-xs bg-green-600 text-white px-2 py-1 rounded">Você</span>
-                    )}
-                  </div>
-                  <div className="text-xs text-slate-400">
-                    📖 {member.book} • Meta: {member.dailyGoal}pgs/dia
-                  </div>
-                </div>
-
-                <div className="relative overflow-x-auto pb-2">
-                  <div className="min-w-max">
-                    <div className="relative mb-2 h-4">
-                      {monthPositions.map(({ month, position }) => (
-                        <div
-                          key={`${month}-${position}`}
-                          className="absolute text-xs text-slate-400"
-                          style={{ left: `${position * 14 + 40}px` }}
-                        >
-                          {month}
-                        </div>
-                      ))}
+            {sortedMembers.map((member) => {
+              return (
+                <div key={member.id}>
+                  <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 mb-3">
+                    <div className="flex items-center gap-2">
+                      <div className="text-sm font-medium">{member.name}</div>
+                      {member.id === profile?.id && (
+                        <span className="text-xs bg-green-600 text-white px-2 py-1 rounded">
+                          Você
+                        </span>
+                      )}
                     </div>
+                    <div className="text-xs text-slate-400">
+                      📖 {member.book} • Meta: {member.dailyGoal}pgs/dia
+                    </div>
+                  </div>
 
-                    <div className="flex">
-                      <div className="flex flex-col text-xs text-slate-400 mr-2 shrink-0">
-                        <div className="h-3 mb-0.5"></div>
-                        <div className="h-3 mb-0.5 leading-3 text-right pr-1">Seg</div>
-                        <div className="h-3 mb-0.5"></div>
-                        <div className="h-3 mb-0.5 leading-3 text-right pr-1">Qua</div>
-                        <div className="h-3 mb-0.5"></div>
-                        <div className="h-3 mb-0.5 leading-3 text-right pr-1">Sex</div>
-                      </div>
-
-                      <div className="inline-flex gap-0.5">
-                        {Array.from({ length: weeksToShow }, (_, weekIndex) => (
-                          <div key={weekIndex} className="flex flex-col gap-0.5">
-                            {Array.from({ length: 7 }, (_, dayIndex) => {
-                              const dayNumber = weekIndex * 7 + dayIndex;
-                              const day = contributions[member.id]?.[dayNumber];
-                              const currentDate = createDateFromDays(startDate, dayNumber);
-                              const tooltipText = day?.pagesRead
-                                  ? `${formatTooltipDate(currentDate)} - ${day.pagesRead} páginas`
-                                  : formatTooltipDate(currentDate);
-
-                              return (
-                                <div
-                                  key={dayNumber}
-                                  className={`w-3 h-3 rounded-sm hover:ring-1 hover:ring-slate-400 transition-all ${
-                                    day ? getLevelClass(day.level) : "bg-gray-800"
-                                  }`}
-                                  title={tooltipText}
-                                />
-                              );
-                            })}
+                  <div className="relative overflow-x-auto pb-2">
+                    <div className="min-w-max">
+                      <div className="relative mb-2 h-4">
+                        {monthPositions.map(({ month, position }) => (
+                          <div
+                            key={`${month}-${position}`}
+                            className="absolute text-xs text-slate-400"
+                            style={{ left: `${position * 14 + 40}px` }}
+                          >
+                            {month}
                           </div>
                         ))}
                       </div>
+
+                      <div className="flex">
+                        <div className="flex flex-col text-xs text-slate-400 mr-2 shrink-0">
+                          <div className="h-3 mb-0.5"></div>
+                          <div className="h-3 mb-0.5 leading-3 text-right pr-1">
+                            Seg
+                          </div>
+                          <div className="h-3 mb-0.5"></div>
+                          <div className="h-3 mb-0.5 leading-3 text-right pr-1">
+                            Qua
+                          </div>
+                          <div className="h-3 mb-0.5"></div>
+                          <div className="h-3 mb-0.5 leading-3 text-right pr-1">
+                            Sex
+                          </div>
+                        </div>
+
+                        <div className="inline-flex gap-0.5">
+                          {Array.from(
+                            { length: weeksToShow },
+                            (_, weekIndex) => (
+                              <div
+                                key={weekIndex}
+                                className="flex flex-col gap-0.5"
+                              >
+                                {Array.from({ length: 7 }, (_, dayIndex) => {
+                                  const dayNumber = weekIndex * 7 + dayIndex;
+                                  const day =
+                                    contributions[member.id]?.[dayNumber];
+                                  const currentDate = createDateFromDays(
+                                    startDate,
+                                    dayNumber
+                                  );
+                                  const tooltipText = day?.pagesRead
+                                    ? `${formatTooltipDate(currentDate)} - ${
+                                        day.pagesRead
+                                      } páginas`
+                                    : formatTooltipDate(currentDate);
+
+                                  return (
+                                    <div
+                                      key={dayNumber}
+                                      className={`w-3 h-3 rounded-sm hover:ring-1 hover:ring-slate-400 transition-all ${
+                                        day
+                                          ? getLevelClass(day.level)
+                                          : "bg-gray-800"
+                                      }`}
+                                      title={tooltipText}
+                                    />
+                                  );
+                                })}
+                              </div>
+                            )
+                          )}
+                        </div>
+                      </div>
                     </div>
                   </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
 
