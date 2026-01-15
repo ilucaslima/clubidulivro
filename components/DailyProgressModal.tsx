@@ -56,13 +56,16 @@ export default function DailyProgressModal({
 
         const userData = userDoc.data();
         const currentBookPagesRead = userData.currentBookPagesRead || 0;
-        const newTotalRead = currentBookPagesRead + pagesReadToday;
-        const intensity = calculateIntensity(pagesReadToday, profile.dailyGoal);
+        const newTotalRead = currentBookPagesRead + pagesReadFromInput;
+        const intensity = calculateIntensity(
+          pagesReadFromInput,
+          profile.dailyGoal
+        );
 
         transaction.set(progressDocRef, {
           userId: profile.id,
           date: dateString,
-          pagesRead: totalPagesForToday,
+          pagesRead: pagesReadFromInput,
           intensity,
           timestamp: serverTimestamp(),
         });
@@ -79,7 +82,10 @@ export default function DailyProgressModal({
             finishedAt: new Date(),
           };
 
-          updateData.completedBooks = [...(userData.completedBooks || []), completedBook];
+          updateData.completedBooks = [
+            ...(userData.completedBooks || []),
+            completedBook,
+          ];
           updateData.book = "";
           updateData.totalPages = 0;
           updateData.dailyGoal = 0;
@@ -124,10 +130,17 @@ export default function DailyProgressModal({
               {profile.book || "Nenhum livro selecionado"}
             </p>
             <div className="flex justify-between mt-2">
-              <span className="text-xs text-slate-400">Meta: {profile.dailyGoal} páginas</span>
+              <span className="text-xs text-slate-400">
+                Meta: {profile.dailyGoal} páginas
+              </span>
               {profile.totalPages > 0 && (
                 <span className="text-xs text-green-400">
-                  Restam {Math.max(0, profile.totalPages - (profile.currentBookPagesRead || 0))} pgs
+                  Restam{" "}
+                  {Math.max(
+                    0,
+                    profile.totalPages - (profile.currentBookPagesRead || 0)
+                  )}{" "}
+                  pgs
                 </span>
               )}
             </div>
@@ -137,8 +150,12 @@ export default function DailyProgressModal({
         {success ? (
           <div className="text-center py-8 animate-in fade-in zoom-in duration-300">
             <div className="text-5xl mb-4">🎉</div>
-            <p className="text-green-400 font-bold text-lg">Progresso registrado!</p>
-            <p className="text-slate-400 text-sm mt-1">Sua contribuição foi adicionada ao quadro.</p>
+            <p className="text-green-400 font-bold text-lg">
+              Progresso registrado!
+            </p>
+            <p className="text-slate-400 text-sm mt-1">
+              Sua contribuição foi adicionada ao quadro.
+            </p>
           </div>
         ) : (
           <>
